@@ -193,7 +193,11 @@ app.post('/upload', upload.single('video'), async (req, res) => {
   try {
     const videoPath = req.file?.path
     const intervalSec = Number(req.body?.intervalSec || 1)
-    if (!videoPath) return res.status(400).json({ error: 'Video ausente' })
+    
+    if (!videoPath) {
+      return res.status(400).json({ error: 'Video ausente' })
+    }
+    
     const id = uuidv4()
     const outDir = path.join(framesDir, id)
     fs.mkdirSync(outDir, { recursive: true })
@@ -206,7 +210,10 @@ app.post('/upload', upload.single('video'), async (req, res) => {
         .outputOptions(['-vf', fpsExpr, '-qscale:v', '2'])
         .output(outputPattern)
         .on('end', resolve)
-        .on('error', reject)
+        .on('error', (err) => {
+          console.error('Erro no ffmpeg:', err)
+          reject(err)
+        })
         .run()
     })
 
@@ -214,11 +221,20 @@ app.post('/upload', upload.single('video'), async (req, res) => {
       .readdirSync(outDir)
       .filter((f) => /\.jpg$/i.test(f))
       .sort()
+    
+    if (files.length === 0) {
+      return res.status(500).json({ error: 'Nenhum frame foi extraído do vídeo' })
+    }
+    
     const baseUrl = `${req.protocol}://${req.get('host')}`
     const frames = files.map((f) => `${baseUrl}/frames/${id}/${f}`)
     res.json({ id, frames })
   } catch (e) {
-    res.status(500).json({ error: 'Falha ao extrair frames' })
+    console.error('Erro ao processar upload:', e)
+    res.status(500).json({ 
+      error: 'Falha ao extrair frames',
+      message: e.message || 'Erro desconhecido'
+    })
   }
 })
 
@@ -392,5 +408,22 @@ app.get('/evaluate/:id', async (req, res) => {
   }
 })
 
+// Handler para rotas não encontradas (404) - garante CORS
+app.use((req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada', path: req.path })
+})
+
+// Error handler global - garante CORS em erros
+app.use((err, req, res, next) => {
+  console.error('Erro no servidor:', err)
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'CORS bloqueado', origin: req.headers.origin })
+  }
+  res.status(500).json({ error: 'Erro interno do servidor', message: err.message })
+})
+
 const port = Number(process.env.PORT || 5000)
-app.listen(port, () => {})
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`)
+  console.log(`CORS permitido para origens: ${allowedOrigins.join(', ')}`)
+})
