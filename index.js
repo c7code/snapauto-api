@@ -16,7 +16,37 @@ const __dirname = path.dirname(__filename)
 ffmpeg.setFfmpegPath(ffmpegPath)
 
 const app = express()
-app.use(cors())
+
+const defaultAllowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://snapauto-client.vercel.app',
+  'https://snapauto-client-xag5.vercel.app',
+]
+const envAllowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+const allowedOrigins = Array.from(
+  new Set([...defaultAllowedOrigins, ...envAllowedOrigins])
+)
+const allowAllOrigins =
+  process.env.CORS_ALLOW_ALL === 'true' || allowedOrigins.length === 0
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (allowAllOrigins || !origin || allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    console.warn(`CORS bloqueado para origem: ${origin}`)
+    return callback(new Error('Not allowed by CORS'))
+  },
+  credentials: true,
+}
+
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 app.use(express.json())
 
 // ==================== RATE LIMITING ====================
